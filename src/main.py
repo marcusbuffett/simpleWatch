@@ -3,6 +3,7 @@ Some kind of docstring.
 """
 
 import subprocess
+from fnmatch import fnmatch
 from termcolor import colored
 import time
 import sys
@@ -13,11 +14,11 @@ from watchdog.events import FileSystemEventHandler
 
 class CommandEventHandler(FileSystemEventHandler):
     """
-    Override FileSystemEventHandler
+    Override FileSystemEventHandler from watchdog
     """
-    def __init__(self, filePath, command):
+    def __init__(self, pathsToWatch, command):
         self.command = command
-        self.filePath = filePath
+        self.pathsToWatch = pathsToWatch
         self.lastTimeCalled = time.time()
         self.bufferTime = 1.0
         self.lastProcess = None
@@ -33,9 +34,12 @@ class CommandEventHandler(FileSystemEventHandler):
         self.lastTimeCalled = time.time()
         self.lastProcess = subprocess.Popen(self.command, shell=True)
 
+    def validPath(self, path):
+        return any(fnmatch(path, p) for p in self.pathsToWatch)
+
     def validEvent(self, event):
         if event.event_type in ["modified", "deleted"]:
-            if event._src_path == self.filePath:
+            if self.validPath(event._src_path):
                 return True
         return False
 
@@ -44,11 +48,20 @@ class CommandEventHandler(FileSystemEventHandler):
         if elapsedTime > self.bufferTime:
             return True
         return False
+        return True
 
     def on_any_event(self, event):
         if self.validEvent(event) and self.bufferTimeElapsed():
-                self.killLastCommand()
-                self.executeCommand()
+            self.killLastCommand()
+            self.executeCommand()
+
+
+def uniqueDirs(paths):
+    dirs = []
+    for path in paths:
+        if path not in dirs:
+            dirs.append(os.path.dirname(path))
+    return dirs
 
 
 def main():
@@ -59,16 +72,20 @@ def main():
         print(colored("Must supply a command and a file to watch", 'red'))
         sys.exit(0)
     command = sys.argv[1]
-    filePath = sys.argv[2]
-    absPath = os.path.abspath(filePath)
 
-    commandEventHandler = CommandEventHandler(absPath, command)
+    pathsToWatch = sys.argv[2:]
+    absPathsToWatch = [os.path.abspath(path) for path in pathsToWatch]
+
+    commandEventHandler = CommandEventHandler(absPathsToWatch, command)
     observer = Observer()
-    observer.schedule(commandEventHandler, os.path.dirname(absPath))
+    for d in uniqueDirs(absPathsToWatch):
+        observer.schedule(commandEventHandler, d)
     observer.start()
 
-    print(colored("Path to watch for changes : " + filePath, 'green'))
-    print(colored("Command to run : " + command, 'green'))
+    print(colored("Files to watch for changes : ", 'green'), end="")
+    print(pathsToWatch)
+    print(colored("Command to run : ", 'green'), end="")
+    print(command)
     try:
         while True:
             time.sleep(1)
