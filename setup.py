@@ -10,7 +10,7 @@ setup(
     download_url='',
     entry_points={
         'console_scripts': [
-            'simpleWatch = src.main:main',
+            'swatch = src.main:main',
         ],
     },
     keywords=['file-watcher, watch, file'],
